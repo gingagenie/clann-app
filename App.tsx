@@ -8,7 +8,6 @@ const APP_URL = 'https://clann.onrender.com'
 const SUPABASE_URL = 'https://pdztoctoyptmfhzhndck.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkenRvY3RveXB0bWZoemhuZGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MTM1NDksImV4cCI6MjA5MDE4OTU0OX0.Z0xWbSFGpUc5H3Jgm_DQHm9uvRleY8Uc664j3KnHa1E'
 
-// Show notifications even when app is in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -21,23 +20,19 @@ Notifications.setNotificationHandler({
 
 async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) return null
-
   const { status: existing } = await Notifications.getPermissionsAsync()
   let finalStatus = existing
-
   if (existing !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync()
     finalStatus = status
   }
-
   if (finalStatus !== 'granted') return null
-
   const token = await Notifications.getDevicePushTokenAsync()
   return token.data as string
 }
 
 async function saveTokenToSupabase(token: string, userId: string, householdId: string) {
-  await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -53,14 +48,33 @@ async function saveTokenToSupabase(token: string, userId: string, householdId: s
       auth: 'fcm',
     }),
   })
+  return res.ok
 }
 
 export default function App() {
   const webViewRef = useRef<WebView>(null)
   const [currentUrl, setCurrentUrl] = useState(APP_URL)
+  const [pushToken, setPushToken] = useState<string | null>(null)
 
+  // Register for push on startup — get the token ready before the web app asks
   useEffect(() => {
-    // Handle notification taps — navigate WebView to the right page
+    registerForPushNotifications().then(token => {
+      if (token) setPushToken(token)
+    })
+  }, [])
+
+  // When the WebView loads, inject the token and native flag
+  const injectNativeContext = (token: string | null) => {
+    const script = `
+      window.__isNativeApp = true;
+      window.__nativePushToken = ${token ? JSON.stringify(token) : 'null'};
+      true;
+    `
+    webViewRef.current?.injectJavaScript(script)
+  }
+
+  // Handle notification taps
+  useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       const url = response.notification.request.content.data?.url as string | undefined
       if (url) {
@@ -72,18 +86,37 @@ export default function App() {
     return () => sub.remove()
   }, [])
 
-  // Called from the web app via postMessage to register push token
+  // Messages from the web app
   const handleWebMessage = async (event: { nativeEvent: { data: string } }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data)
 
       if (msg.type === 'REGISTER_PUSH') {
-        const token = await registerForPushNotifications()
-        if (token && msg.userId && msg.householdId) {
-          await saveTokenToSupabase(token, msg.userId, msg.householdId)
+        const token = pushToken ?? await registerForPushNotifications()
+        if (!token) {
+          webViewRef.current?.injectJavaScript(`
+            window.dispatchEvent(new CustomEvent('nativePushError', { detail: 'no_token' }));
+            true;
+          `)
+          return
+        }
+        if (!msg.userId || !msg.householdId) {
+          webViewRef.current?.injectJavaScript(`
+            window.dispatchEvent(new CustomEvent('nativePushError', { detail: 'missing_user' }));
+            true;
+          `)
+          return
+        }
+        const ok = await saveTokenToSupabase(token, msg.userId, msg.householdId)
+        if (ok) {
           webViewRef.current?.injectJavaScript(`
             window.__nativePushToken = ${JSON.stringify(token)};
             window.dispatchEvent(new CustomEvent('nativePushRegistered', { detail: { token: ${JSON.stringify(token)} } }));
+            true;
+          `)
+        } else {
+          webViewRef.current?.injectJavaScript(`
+            window.dispatchEvent(new CustomEvent('nativePushError', { detail: 'supabase_failed' }));
             true;
           `)
         }
@@ -107,8 +140,10 @@ export default function App() {
         mediaPlaybackRequiresUserAction={false}
         injectedJavaScriptBeforeContentLoaded={`
           window.__isNativeApp = true;
+          window.__nativePushToken = ${pushToken ? JSON.stringify(pushToken) : 'null'};
           true;
         `}
+        onLoad={() => injectNativeContext(pushToken)}
       />
     </View>
   )
