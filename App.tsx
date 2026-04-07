@@ -5,8 +5,6 @@ import * as Device from 'expo-device'
 import * as Notifications from 'expo-notifications'
 
 const APP_URL = 'https://clann.onrender.com'
-const SUPABASE_URL = 'https://pdztoctoyptmfhzhndck.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkenRvY3RveXB0bWZoemhuZGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MTM1NDksImV4cCI6MjA5MDE4OTU0OX0.Z0xWbSFGpUc5H3Jgm_DQHm9uvRleY8Uc664j3KnHa1E'
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -31,25 +29,6 @@ async function registerForPushNotifications(): Promise<string | null> {
   return token.data as string
 }
 
-async function saveTokenToSupabase(token: string, userId: string, householdId: string) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      'Prefer': 'resolution=merge-duplicates',
-    },
-    body: JSON.stringify({
-      user_id: userId,
-      household_id: householdId,
-      endpoint: token,
-      p256dh: 'fcm',
-      auth: 'fcm',
-    }),
-  })
-  return res.ok
-}
 
 export default function App() {
   const webViewRef = useRef<WebView>(null)
@@ -107,19 +86,12 @@ export default function App() {
           `)
           return
         }
-        const ok = await saveTokenToSupabase(token, msg.userId, msg.householdId)
-        if (ok) {
-          webViewRef.current?.injectJavaScript(`
-            window.__nativePushToken = ${JSON.stringify(token)};
-            window.dispatchEvent(new CustomEvent('nativePushRegistered', { detail: { token: ${JSON.stringify(token)} } }));
-            true;
-          `)
-        } else {
-          webViewRef.current?.injectJavaScript(`
-            window.dispatchEvent(new CustomEvent('nativePushError', { detail: 'supabase_failed' }));
-            true;
-          `)
-        }
+        // Send token back to web app — it saves to Supabase using its authenticated session
+        webViewRef.current?.injectJavaScript(`
+          window.__nativePushToken = ${JSON.stringify(token)};
+          window.dispatchEvent(new CustomEvent('nativePushRegistered', { detail: { token: ${JSON.stringify(token)} } }));
+          true;
+        `)
       }
     } catch {
       // ignore malformed messages
