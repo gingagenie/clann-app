@@ -46,8 +46,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "bfbe317d-2727-4871-b7d1-c2aad537a2ed"
       }
-    }
+    },
+    "owner": "gingagenie"
   }
 }
