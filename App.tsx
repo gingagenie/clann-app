@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Platform, StatusBar, StyleSheet, View } from 'react-native'
+import { Platform, StatusBar, StyleSheet } from 'react-native'
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import * as Device from 'expo-device'
 import * as Notifications from 'expo-notifications'
@@ -99,25 +100,27 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FAF8F3" />
-      <WebView
-        ref={webViewRef}
-        source={{ uri: currentUrl }}
-        style={styles.webview}
-        onMessage={handleWebMessage}
-        javaScriptEnabled
-        domStorageEnabled
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        injectedJavaScriptBeforeContentLoaded={`
-          window.__isNativeApp = true;
-          window.__nativePushToken = ${pushToken ? JSON.stringify(pushToken) : 'null'};
-          true;
-        `}
-        onLoad={() => injectNativeContext(pushToken)}
-      />
-    </View>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FAF8F3" />
+        <WebView
+          ref={webViewRef}
+          source={{ uri: currentUrl }}
+          style={styles.webview}
+          onMessage={handleWebMessage}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          injectedJavaScriptBeforeContentLoaded={`
+            window.__isNativeApp = true;
+            window.__nativePushToken = ${pushToken ? JSON.stringify(pushToken) : 'null'};
+            true;
+          `}
+          onLoad={() => injectNativeContext(pushToken)}
+        />
+      </SafeAreaView>
+    </SafeAreaProvider>
   )
 }
 
@@ -125,7 +128,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAF8F3',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   webview: {
     flex: 1,
