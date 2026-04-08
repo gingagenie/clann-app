@@ -48,6 +48,7 @@ export default function App() {
     const script = `
       window.__isNativeApp = true;
       window.__nativePushToken = ${token ? JSON.stringify(token) : 'null'};
+      document.documentElement.style.setProperty('--native-safe-area-bottom', '0px');
       true;
     `
     webViewRef.current?.injectJavaScript(script)
@@ -115,6 +116,7 @@ export default function App() {
           injectedJavaScriptBeforeContentLoaded={`
             window.__isNativeApp = true;
             window.__nativePushToken = ${pushToken ? JSON.stringify(pushToken) : 'null'};
+            document.documentElement.style.setProperty('--native-safe-area-bottom', '0px');
             true;
           `}
           onLoad={() => injectNativeContext(pushToken)}
